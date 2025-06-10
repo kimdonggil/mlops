@@ -1,9 +1,1 @@
-{
-  "default-runtime": "nvidia",
-  "runtimes": {
-    "nvidia": {
-      "path": "nvidia-container-runtime",
-      "runtimeArgs": []
-    }
-  }
-}
+sudo vim /etc/docker/daemon.json

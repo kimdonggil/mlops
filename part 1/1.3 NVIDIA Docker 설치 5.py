@@ -1,2 +1,9 @@
-sudo systemctl daemon-reload
-sudo systemctl restart docker
+{
+  "default-runtime": "nvidia",
+  "runtimes": {
+    "nvidia": {
+      "path": "nvidia-container-runtime",
+      "runtimeArgs": []
+    }
+  }
+}
