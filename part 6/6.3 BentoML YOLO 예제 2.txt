@@ -1,0 +1,68 @@
+import os
+import pandas as pd
+from pydantic import BaseModel
+from typing import Optional
+from multiprocessing import Process
+import warnings
+
+import bentoml
+from bentoml.io import JSON
+
+from minio import Minio
+
+warnings.filterwarnings('ignore')
+
+bucket = 'grit'
+minio_path = '/mnt/dlabflow/backend/minio'
+base_path = os.path.join(minio_path, bucket)
+
+client = Minio('10.40.217.236:9002', 'dlab-backend', 'dlab-backend-secret', secure=False)
+
+class TrainingParams(BaseModel):
+    projectId: str
+    versionId: str
+    algorithm: str
+    batchsize: int
+    epoch: int
+
+def background_training_task(arg_dict):
+    arg = TrainingParams(**arg_dict)
+    if arg.algorithm in (
+        'yolo_version_5_normal', 'yolo_version_5_small', 'yolo_version_5_medium', 
+        'yolo_version_5_large', 'yolo_version_5_xlarge',
+        'yolo_version_8_normal', 'yolo_version_8_small', 'yolo_version_8_medium',
+        'yolo_version_8_large', 'yolo_version_8_xlarge'
+    ):
+        os.system(
+            f'python3 /mnt/dlabflow/backend/kubeflow/pipelines/admin/training_yolo.py '
+            f'--projectId={arg.projectId} --versionId={arg.versionId} '
+            f'--algorithm={arg.algorithm} --batchsize={arg.batchsize} --epoch={arg.epoch}'
+        )
+    elif arg.algorithm in (
+        'efficientdet_d0', 'efficientdet_d1', 'efficientdet_d2', 'efficientdet_d3', 
+        'efficientdet_d4', 'efficientdet_d5', 'efficientdet_d6', 'efficientdet_d7'
+    ):
+        df = pd.DataFrame([{'epoch': arg.epoch}])
+        df_path = '/mnt/dlabflow/backend/kubeflow/pipelines/admin'
+        df_file_path = os.path.join(df_path, 'epoch.txt')
+        df.to_csv(df_file_path, index=False)
+        os.system(
+            f'python3 /mnt/dlabflow/backend/kubeflow/pipelines/admin/training_tf.py '
+            f'--projectId={arg.projectId} --versionId={arg.versionId} '
+            f'--algorithm={arg.algorithm} --batchsize={arg.batchsize} --epoch={arg.epoch}'
+        )
+
+input_spec_training = JSON(pydantic_model=TrainingParams)
+svc = bentoml.Service("training_service")
+
+@svc.api(input=input_spec_training, output=JSON(), route='/training')
+def training(arg: TrainingParams):
+    print('training')
+    p = Process(target=background_training_task, args=(arg.dict(),))
+    p.start()
+    return {
+        "status": "accepted",
+        "message": "Training task is being processed in the background",
+        "projectId": arg.projectId,
+        "versionId": arg.versionId
+    }
