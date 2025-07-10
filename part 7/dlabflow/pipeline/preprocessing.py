@@ -132,12 +132,15 @@ def Preprocessing(projectId: str, versionId: str, dataPath: str, dataNormalizati
             for i, j in zip(image_list, annotation_list):
                 image = cv2.imread(image_path+i, cv2.IMREAD_COLOR)
                 image_gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
-                cv2.imwrite(result_path+'/normalization/'+normalization_type+'/'+os.path.splitext(i)[0]+'_'+normalization_type+'.jpg', image_gray)
                 tree = ET.parse(annotation_path+j)
                 root = tree.getroot()
+                folder = root.find('folder').text
                 filename = root.find('filename').text
-                root.find('filename').text = str(root.find('filename').text.rstrip('.jpg')+'_'+normalization_type+'.jpg')
-                root.find('path').text = str(root.find('path').text.rstrip('.jpg')+'_'+normalization_type+'.jpg')
+                name, ext = os.path.splitext(filename)
+                new_filename = f"{name}_{normalization_type}{ext.lower()}"
+                cv2.imwrite(result_path+'/normalization/'+normalization_type+'/'+new_filename, image_gray)
+                root.find('filename').text = str(new_filename)
+                root.find('path').text = str(folder+'/'+new_filename)
                 tree.write(result_path+'/normalization/'+normalization_type+'/'+j.rstrip('.xml')+'_'+normalization_type+'.xml')
             for i in os.listdir(result_path+'/normalization/'+normalization_type):
                 client.fput_object(bucket_name=bucket, object_name=projectId+'/'+versionId+'/preprocessing/normalization/'+normalization_type+'/'+i, file_path=result_path+'/normalization/'+normalization_type+'/'+i)
@@ -594,6 +597,11 @@ def Preprocessing(projectId: str, versionId: str, dataPath: str, dataNormalizati
                     rotation(result_path+'/normalization/grayscale/')
                     sample(result_path+'/augmentation/'+augmentation_type, 'gray', augmentation_type)
 
+            elif len(check_dataAugmentation) == 0:
+                normalization_type = 'grayscale'
+                grayscale()
+                sample(result_path+'/normalization/'+normalization_type, 'gray', normalization_type)
+
 #        else:
 #            sample(tmp_image_path, 'color', 'raw')
 
@@ -601,14 +609,15 @@ def Preprocessing(projectId: str, versionId: str, dataPath: str, dataNormalizati
     ## preprocessing task 1, 2, 3, 4 run
     ################################################################################################
 
-    db = pymysql.connect(
-        host = '10.40.217.236',
-        user = 'root',
-        password = 'password',
-        port = 3306,
-        db = 'yolo',
-        charset = 'utf8'
-    )
+    #db = pymysql.connect(
+    #    host = '10.40.217.236',
+    #    user = 'root',
+    #    password = 'password',
+    #    port = 3306,
+    #    db = 'yolo',
+    #    charset = 'utf8'
+    #)
+    db = pymysql.connect(host='10.40.217.236', user='root', password='password', port=3307, db='sms', charset='utf8')
 
     def db_mysql_stat_update(projectId, versionId, statusOfPreprocessing):
         cursor = db.cursor()
@@ -743,7 +752,7 @@ def pipelines():
 
     Preprocessing_apply = Preprocessing(args.projectId, args.versionId, args.dataPath, args.dataNormalization, args.dataAugmentation, args.trainRatio, args.validationRatio, args.testRatio) \
         .set_display_name('Data Preprocessing') \
-        .apply(onprem.mount_pvc('dlabflow-claim', volume_name='data', volume_mount_path='/mnt/dlabflow'))
+        .apply(onprem.mount_pvc('dlabflow-claim-test', volume_name='data', volume_mount_path='/mnt/dlabflow'))
     Preprocessing_apply.execution_options.caching_strategy.max_cache_staleness = 'P0D'
 
 if __name__ == '__main__':
@@ -753,9 +762,9 @@ if __name__ == '__main__':
     #USERNAME = 'user@example.com'
     #PASSWORD = '12341234'
     #NAMESPACE = 'kubeflow-user-example-com'
-    USERNAME = 'kubeflow-grit@service.com'
-    PASSWORD = 'kubeflow-grit-secret'
-    NAMESPACE = 'grit'
+    USERNAME = 'kubeflow-grit-test@service.com'
+    PASSWORD = 'N2aUQEQbhF09WFc'
+    NAMESPACE = 'kubeflow-grit-test'    
     session = requests.Session()
     response = session.get(HOST)
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}

@@ -10,6 +10,7 @@ import sys
 try:
     import os
     import io
+    import uuid
     import ast
     from pydantic import BaseModel
     import typing as t
@@ -71,7 +72,7 @@ class TrainingParams(BaseModel):
 class InferenceParams(BaseModel):
     projectId: str
     versionId: str
-    inferenceAlgorithm: str
+    sessionId: str
 
 input_spec_datasource = JSON(pydantic_model=DataSourceParams)
 
@@ -167,8 +168,11 @@ def datasource(arg: PreprocessingParams):
         cursor.close()
 
     df_mysql_1 = db_mysql_dataframe(sql_select='Stat')
+    print(df_mysql_1)
     df_mysql_select_1 = df_mysql_1[(df_mysql_1['projectId'] == projectId) & (df_mysql_1['versionId'] == versionId)]
+
     df_mysql_2 = db_mysql_dataframe(sql_select='Preprocessing')
+    print(df_mysql_2)
     df_mysql_select_2 = df_mysql_2[(df_mysql_2['projectId'] == projectId) & (df_mysql_2['versionId'] == versionId)]  
 
     values = []
@@ -177,21 +181,25 @@ def datasource(arg: PreprocessingParams):
         values.append(data_source.dict())
     df = pd.DataFrame(values)
 
+    print(df)
+
     totalpages = df['totalPages'].values[0]
 
-    if 'Ready' in df_mysql_select_1['statusOfDataSource'].values:
-        status_data_source = 'Running'
+    print(totalpages)
+
+    if 'READY' in df_mysql_select_1['statusOfDataSource'].values:
+        status_data_source = 'RUNNING'
         page = 0
         print(f"page{page}")
         pagen = 1
     else:
-        status_data_source = 'Running'
+        status_data_source = 'RUNNING'
         page = df_mysql_select_2['PageN'].values[0]
         print(f"page{page}")
         pagen = page+1
         if pagen > totalpages-1:
             pagen = totalpages-1
-            status_data_source = 'Finish'
+            status_data_source = 'FINISH'
             object_name = f'{projectId}_{versionId}.csv'           
             client = Minio(endpoint='10.40.217.236:9002', access_key='dlab-backend', secret_key='dlab-backend-secret', secure=False)
             response = client.get_object(bucket_name, object_name)
@@ -210,7 +218,7 @@ def datasource(arg: PreprocessingParams):
             validationratio = minio_df['validationRatio'].values[0]
             testratio = minio_df['testRatio'].values[0]          
 
-            os.system('python3 /mnt/dlabflow/backend/kubeflow/pipelines/preprocessing.py --projectId=%s --versionId=%s --dataPath=%s --dataNormalization=%s --dataAugmentation=%s --trainRatio=%s --validationRatio=%s --testRatio=%s' %(projectid, versionid, datapath, datanormalization, dataaugmentation, trainratio, validationratio, testratio))
+            os.system('python3 /mnt/dlabflow/backend/kubeflow/pipelines/admin/preprocessing.py --projectId=%s --versionId=%s --dataPath=%s --dataNormalization=%s --dataAugmentation=%s --trainRatio=%s --validationRatio=%s --testRatio=%s' %(projectid, versionid, datapath, datanormalization, dataaugmentation, trainratio, validationratio, testratio))
 
     try:
         annotation_list = []
@@ -249,7 +257,7 @@ def datasource(arg: PreprocessingParams):
             
     except BentoMLException as e:
         print(f"Error message: {e}")
-        status_data_source = 'Error'
+        status_data_source = 'ERROR'
         db_mysql_stat_update(sql_select='Stat', projectId=projectId, versionId=versionId, statusOfDataSource=status_data_source)
 
 input_spec_preprocessing = JSON(pydantic_model=PreprocessingParams)
@@ -289,6 +297,8 @@ def preprocessing(arg: PreprocessingParams):
 
     df = pd.DataFrame({'projectId': [arg.projectId], 'versionId': [arg.versionId], 'dataPath': [arg_dataPath], 'dataNormalization': [arg_dataNormalization], 'dataAugmentation': [arg_dataAugmentation], 'trainRatio': [arg.trainRatio], 'validationRatio': [arg.validationRatio], 'testRatio': [arg.testRatio]})
 
+    print(df)
+
     project_name = df.loc[0, 'projectId']
     version_name = df.loc[0, 'versionId']
 
@@ -313,8 +323,8 @@ def preprocessing(arg: PreprocessingParams):
     df_mysql_select = df_mysql[(df_mysql['projectId'] == arg.projectId) & (df_mysql['versionId'] == arg.versionId)]
 
     try:
-        if 'Ready' in df_mysql_select['statusOfProject'].values:
-            status_project = 'Finish'
+        if 'READY' in df_mysql_select['statusOfProject'].values:
+            status_project = 'FINISH'
             db_mysql_stat_update(sql_select='Stat', projectId=arg.projectId, versionId=arg.versionId, statusOfProject=status_project)
 #            client.fput_object(bucket_name, empty_object_name, empty_file_path)
 
@@ -336,7 +346,7 @@ def preprocessing(arg: PreprocessingParams):
 #                    client.fput_object(bucket_name, empty_object_name, empty_file_path)
 
         else:
-            print('VOC annotation, image preprocessing Not Ready')
+            print('VOC annotation, image preprocessing Not READY')
 
     except BentoMLException as e:
         print(f"Error message: {e}")
@@ -345,11 +355,11 @@ def preprocessing(arg: PreprocessingParams):
     
 #    finally:
 #        try:
-#            if 'Finish' in df_mysql_select['statusOfDataSource'].values:
-#                print('Data normalization & augmentation preprocessing Running')
-#                os.system('python3 /mnt/dlabflow/backend/kubeflow/pipelines/preprocessing.py --projectId=%s --versionId=%s --dataPath=%s --dataNormalization=%s --dataAugmentation=%s --trainRatio=%s --validationRatio=%s --testRatio=%s' %(arg.projectId, arg.versionId, arg_dataPath, arg_dataNormalization, arg_dataAugmentation, arg.trainRatio, arg.validationRatio, arg.testRatio))
+#            if 'FINISH' in df_mysql_select['statusOfDataSource'].values:
+#                print('Data normalization & augmentation preprocessing RUNNING')
+#                os.system('python3 /mnt/dlabflow/backend/kubeflow/pipelines/admin/preprocessing.py --projectId=%s --versionId=%s --dataPath=%s --dataNormalization=%s --dataAugmentation=%s --trainRatio=%s --validationRatio=%s --testRatio=%s' %(arg.projectId, arg.versionId, arg_dataPath, arg_dataNormalization, arg_dataAugmentation, arg.trainRatio, arg.validationRatio, arg.testRatio))
 #            else:
-#                print('VOC annotation, image preprocessing Not Finish')
+#                print('VOC annotation, image preprocessing Not FINISH')
 #        except BentoMLException as e:
 #            print(f"Error message: {e}")
 
@@ -361,7 +371,7 @@ def training(arg: TrainingParams):
     print(arg)
     print(type(arg))
 
-    os.system('python3 /mnt/dlabflow/backend/kubeflow/pipelines/training.py --projectId=%s --versionId=%s --algorithm=%s --batchsize=%s --epoch=%s' %(arg.projectId, arg.versionId, arg.algorithm, arg.batchsize, arg.epoch))
+    os.system('python3 /mnt/dlabflow/backend/kubeflow/pipelines/admin/training.py --projectId=%s --versionId=%s --algorithm=%s --batchsize=%s --epoch=%s' %(arg.projectId, arg.versionId, arg.algorithm, arg.batchsize, arg.epoch))
 
 input_spec_inference = JSON(pydantic_model=InferenceParams)
 
@@ -390,7 +400,8 @@ def inference(arg: InferenceParams):
         cursor.close()
 
     bucket_name = 'aiproject'
-    folder_name = arg.projectId+'/'+arg.versionId+'/inference/before/'
+    
+    folder_name = arg.projectId+'/'+arg.versionId+'/inference/'+arg.sessionId +'/before/'
 
     empty_file_path = "/dev/null"
     empty_object_name = f"{folder_name}.keep"
@@ -398,15 +409,15 @@ def inference(arg: InferenceParams):
     client = Minio(endpoint='10.40.217.236:9002', access_key='dlab-backend', secret_key='dlab-backend-secret', secure=False)
     client.fput_object(bucket_name, empty_object_name, empty_file_path)
 
-    status_inference = 'Create'
-    db_mysql_stat_update(sql_select='Stat', projectId=arg.projectId, versionId=arg.versionId, statusOfInference=status_inference)
+    status_inference = 'CREATE'
+#    db_mysql_stat_update(sql_select='Stat', projectId=arg.projectId, versionId=arg.versionId, statusOfInference=status_inference)
 
     df_mysql = db_mysql_dataframe(sql_select='Stat')
     df_mysql_select = df_mysql[(df_mysql['projectId'] == arg.projectId) & (df_mysql['versionId'] == arg.versionId)]
 
-    os.system('python3 /mnt/dlabflow/backend/kubeflow/pipelines/inference.py --projectId=%s --versionId=%s --inferenceAlgorithm=%s' %(arg.projectId, arg.versionId, arg.inferenceAlgorithm))
-
-#    if 'Upload' in df_mysql_select['statusOfInference'].values: 
-#        os.system('python3 /mnt/dlabflow/backend/kubeflow/pipelines/inference.py --projectId=%s --versionId=%s --inferenceAlgorithm=%s' %(arg.projectId, arg.versionId, arg.inferenceAlgorithm))
+#    if 'UPLOAD' in df_mysql_select['statusOfInference'].values: 
+#        os.system('python3 /mnt/dlabflow/backend/kubeflow/pipelines/admin/inference.py --projectId=%s --versionId=%s --inferenceAlgorithm=%s' %(arg.projectId, arg.versionId, arg.inferenceAlgorithm))
 #    else:
-#        print('Inference image Not Upload')
+#        print('Inference image Not UPLOAD')
+
+    os.system('python3 /mnt/dlabflow/backend/kubeflow/pipelines/admin/inference.py --projectId=%s --versionId=%s --sessionId=%s' %(arg.projectId, arg.versionId, arg.sessionId))

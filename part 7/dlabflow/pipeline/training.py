@@ -119,6 +119,7 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
                 data_dict['class_id'].append(class_id[label])
                 data_dict['bboxes'].append(bbox)
         df_data = pd.DataFrame(data_dict)
+        print(df_data)
         classes = list(df_data.label.unique())
         class_count = len(classes)
         train_path = result_path+'/data/train'
@@ -128,21 +129,22 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
         val_path_tmps = preprocessing_path+'/datasplit/val'
         test_path_tmps = preprocessing_path+'/datasplit/test'
         os.makedirs(train_path, exist_ok=True)
+        valid_extensions = ['jpg', 'JPG', 'png', 'PNG']
         for (root, directories, files) in os.walk(train_path_tmps):
             for file in files:
-                if file.endswith('jpg'):
+                if file.split('.')[-1] in valid_extensions:
                     file_path = os.path.join(root, file)
                     shutil.copy2(file_path, train_path)
         os.makedirs(val_path, exist_ok=True)
         for (root, directories, files) in os.walk(val_path_tmps):
             for file in files:
-                if file.endswith('jpg'):
+                if file.split('.')[-1] in valid_extensions:
                     file_path = os.path.join(root, file)
                     shutil.copy2(file_path, val_path)
         os.makedirs(test_path, exist_ok=True)
         for (root, directories, files) in os.walk(test_path_tmps):
             for file in files:
-                if file.endswith('jpg'):
+                if file.split('.')[-1] in valid_extensions:
                     file_path = os.path.join(root, file)
                     shutil.copy2(file_path, test_path)
         def pascal_voc_to_yolo_bbox(bbox_array, w, h):
@@ -157,8 +159,11 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
         image_list_test = sorted([f for f in os.listdir(test_path) if f.endswith(tuple(['jpg', 'png', 'JPG', 'PNG']))])
         def create_label_file(image_items, folder_name):
             for image in image_items:
+                print(image)
                 fileName = Path(image).stem
+                print(fileName)
                 df = df_data[df_data['filename'] == image]
+                print(df)
                 with open(folder_name + "/" + fileName +'.txt', 'w') as f:
                     for i in range(0, len(df)):
                         bbox = pascal_voc_to_yolo_bbox(df.iloc[i]['bboxes'], df.iloc[i]['width'], df.iloc[i]['height'])
@@ -194,14 +199,16 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
         if cuda == True:
             logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-            db = pymysql.connect(
-                host = '10.40.217.236',
-                user = 'root',
-                password = 'password',
-                port = 3306,
-                db = 'yolo',
-                charset = 'utf8',
-            )
+            #db = pymysql.connect(
+            #    host = '10.40.217.236',
+            #    user = 'root',
+            #    password = 'password',
+            #    port = 3306,
+            #    db = 'yolo',
+            #    charset = 'utf8',
+            #)
+
+            db = pymysql.connect(host='10.40.217.236', user='root', password='password', port=3307, db='sms', charset='utf8')
 
             def db_mysql_training_update(projectId, versionId, trainProgress, epoch):
                 cursor = db.cursor()
@@ -260,6 +267,63 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
                 model = YOLO('yolov8l.pt')
             elif algorithm == 'yolo_version_8_xlarge':
                 model = YOLO('yolov8x.pt')
+
+            ### new 2025.01.03 ################################################
+
+            elif algorithm == 'yolo_version_6_normal':
+                model = YOLO('yolov6n.yaml')
+            elif algorithm == 'yolo_version_6_small':
+                model = YOLO('yolov6s.yaml')
+            elif algorithm == 'yolo_version_6_medium':
+                model = YOLO('yolov6m.yaml')
+            elif algorithm == 'yolo_version_6_large':
+                model = YOLO('yolov6l.yaml')
+            elif algorithm == 'yolo_version_6_xlarge':
+                model = YOLO('yolov6x.yaml')
+
+            elif algorithm == 'yolo_version_8_normal':
+                model = YOLO('yolov8n.pt')
+            elif algorithm == 'yolo_version_8_small':
+                model = YOLO('yolov8s.pt')
+            elif algorithm == 'yolo_version_8_medium':
+                model = YOLO('yolov8m.pt')
+            elif algorithm == 'yolo_version_8_large':
+                model = YOLO('yolov8l.pt')
+            elif algorithm == 'yolo_version_8_xlarge':
+                model = YOLO('yolov8x.pt')
+            elif algorithm == 'yolo_version_9_tiny':
+                model = YOLO('yolov9t.pt')
+            elif algorithm == 'yolo_version_9_small':
+                model = YOLO('yolov9s.pt')
+            elif algorithm == 'yolo_version_9_medium':
+                model = YOLO('yolov9m.pt')
+            elif algorithm == 'yolo_version_9_compact':
+                model = YOLO('yolov9c.pt')
+            elif algorithm == 'yolo_version_9_extend':
+                model = YOLO('yolov9e.pt')
+            elif algorithm == 'yolo_version_10_normal':
+                model = YOLO('yolov10n.pt')
+            elif algorithm == 'yolo_version_10_small':
+                model = YOLO('yolov10s.pt')
+            elif algorithm == 'yolo_version_10_medium':
+                model = YOLO('yolov10m.pt')
+            elif algorithm == 'yolo_version_10_large':
+                model = YOLO('yolov10l.pt')
+            elif algorithm == 'yolo_version_10_xlarge':
+                model = YOLO('yolov10x.pt')
+            elif algorithm == 'yolo_version_11_normal':
+                model = YOLO('yolo11n.pt')
+            elif algorithm == 'yolo_version_11_small':
+                model = YOLO('yolo11s.pt')
+            elif algorithm == 'yolo_version_11_medium':
+                model = YOLO('yolo11m.pt')
+            elif algorithm == 'yolo_version_11_large':
+                model = YOLO('yolo11l.pt')
+            elif algorithm == 'yolo_version_11_xlarge':
+                model = YOLO('yolo11x.pt')
+
+            ###################################################################
+
             custom_callback = CustomCallback(epoch=epoch)
 
             model.add_callback('on_train_epoch_end', custom_callback)
@@ -360,14 +424,16 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
         cursor.close()
         
 
-    db = pymysql.connect(
-        host = '10.40.217.236',
-        user = 'root',
-        password = 'password',
-        port = 3306,
-        db = 'yolo',
-        charset = 'utf8'
-    )
+    #db = pymysql.connect(
+    #    host = '10.40.217.236',
+    #    user = 'root',
+    #    password = 'password',
+    #    port = 3306,
+    #    db = 'yolo',
+    #    charset = 'utf8'
+    #)
+
+    db = pymysql.connect(host='10.40.217.236', user='root', password='password', port=3307, db='sms', charset='utf8')
 
     while True:
         try:
@@ -392,10 +458,10 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
 #                statusOfTrain = 'ERROR'
 #            )
             db_mysql_training_tmp_update(
-                projectId = projectId,                
-                versionId = versionId,                
+                projectId = projectId,
+                versionId = versionId,
                 subStatusOfTraining = 'ERROR'
-            )            
+            )
             break
         finally:
             for item in client.list_objects(bucket_name=bucket, prefix=projectId+'/'+versionId+'/train', recursive=True):
@@ -423,6 +489,8 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
                 precisions = precision,
                 subStatusOfTraining = 'FINISH'
             )
+    
+
             
 ################################################################################################
 ## kubeflow pipeline upload
@@ -439,7 +507,7 @@ def pipelines():
 
     Training_apply = Training(args.projectId, args.versionId, args.algorithm, args.batchsize, args.epoch) \
         .set_display_name('Model Training') \
-        .apply(onprem.mount_pvc('dlabflow-claim', volume_name='data', volume_mount_path='/mnt/dlabflow')) \
+        .apply(onprem.mount_pvc('dlabflow-claim-test', volume_name='data', volume_mount_path='/mnt/dlabflow')) \
         .add_env_variable(V1EnvVar(name="CUDA_VISIBLE_DEVICES", value="1"))
     
     smh_vol = kfp.dsl.PipelineVolume(name = 'shm-vol', empty_dir = {'medium': 'Memory'})
@@ -453,9 +521,9 @@ if __name__ == '__main__':
     #USERNAME = 'user@example.com'
     #PASSWORD = '12341234'
     #NAMESPACE = 'kubeflow-user-example-com'
-    USERNAME = 'kubeflow-grit@service.com'
-    PASSWORD = 'kubeflow-grit-secret'
-    NAMESPACE = 'grit'    
+    USERNAME = 'kubeflow-grit-test@service.com'
+    PASSWORD = 'N2aUQEQbhF09WFc'
+    NAMESPACE = 'kubeflow-grit-test'    
     session = requests.Session()
     response = session.get(HOST)
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
