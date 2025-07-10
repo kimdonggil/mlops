@@ -42,10 +42,14 @@ guide/
 │   ├── 5.1 KFP 설치
 │   ├── 5.2 KFP YOLO 예제
 │   ├── 5.3 KFP 이슈
-└── part 6
-    ├── 6.1 BentoML 설치 
-    ├── 6.2 BentoML YOLO 예제
-    └── 6.3 BentoML 실행
+├── part 6
+│   ├── 6.1 BentoML 설치
+│   ├── 6.2 BentoML YOLO 예제
+│   ├── 6.3 BentoML 실행
+└── part 7
+    └── dlabflow
+        ├── bentoml
+        └── pipeline
 
 ```
 
@@ -60,3 +64,5 @@ guide/
 `part 5`는 KFP(Kubeflow Pipelines) 예제로, KFP 설치 방법부터 YOLO 모델을 활용한 Pipeline 예제를 통해 KFP 사용 방법을 실습합니다.
 
 `part 6`은 BentoML 예제로, BentoML 설치부터 YOLO 모델 훈련 예제를 통해 BentoML 사용 방법을 실습합니다.
+
+`part 7`은 D-Lab Flow에서 사용된 BentoML & Kubeflow 파일 모음입니다.
