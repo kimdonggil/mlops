@@ -609,31 +609,35 @@ def Preprocessing(projectId: str, versionId: str, dataPath: str, dataNormalizati
     ## preprocessing task 1, 2, 3, 4 run
     ################################################################################################
 
-    #db = pymysql.connect(
-    #    host = '10.40.217.236',
-    #    user = 'root',
-    #    password = 'password',
-    #    port = 3306,
-    #    db = 'yolo',
-    #    charset = 'utf8'
-    #)
-    db = pymysql.connect(host='10.40.217.236', user='root', password='password', port=3307, db='sms', charset='utf8')
+    db = pymysql.connect(
+        host = '10.40.217.236',
+        user = 'root',
+        password = 'password',
+        port = 3306,
+        db = 'yolo',
+        charset = 'utf8'
+    )
+    #db = pymysql.connect(host='10.40.217.236', user='root', password='password', port=3307, db='sms', charset='utf8')
 
     def db_mysql_stat_update(projectId, versionId, statusOfPreprocessing):
         cursor = db.cursor()
-        sql = 'Update Stat set statusOfPreprocessing=%s where (projectId, versionId)=%s'
-        val = [statusOfPreprocessing, (projectId, versionId)]
-        cursor.execute(sql, val)
-        db.commit()
-        cursor.close()   
+        try:
+            sql = 'Update Stat set statusOfPreprocessing=%s where (projectId, versionId)=%s'
+            val = [statusOfPreprocessing, (projectId, versionId)]
+            cursor.execute(sql, val)
+            db.commit()
+        finally:
+            cursor.close()
 
     def db_mysql_preprocessing_update(projectId, versionId, numOfTrain, numOfTest, numOfValidation, numOfRaw, numOfAugmentation, numOfAugmentationRaw):
         cursor = db.cursor()
-        sql = 'Update Preprocessing set numOfTrain=%s, numOfTest=%s, numOfValidation=%s, numOfRaw=%s, numOfAugmentation=%s, numOfAugmentationRaw=%s where (projectId, versionId)=%s'
-        val = [numOfTrain, numOfTest, numOfValidation, numOfRaw, numOfAugmentation, numOfAugmentationRaw, (projectId, versionId)]
-        cursor.execute(sql, val)
-        db.commit()
-        cursor.close()
+        try:
+            sql = 'Update Preprocessing set numOfTrain=%s, numOfTest=%s, numOfValidation=%s, numOfRaw=%s, numOfAugmentation=%s, numOfAugmentationRaw=%s where (projectId, versionId)=%s'
+            val = [numOfTrain, numOfTest, numOfValidation, numOfRaw, numOfAugmentation, numOfAugmentationRaw, (projectId, versionId)]
+            cursor.execute(sql, val)
+            db.commit()
+        finally:        
+            cursor.close()        
 
     while True:
 
@@ -728,6 +732,7 @@ def Preprocessing(projectId: str, versionId: str, dataPath: str, dataNormalizati
             shutil.rmtree(tmps_split)
             shutil.rmtree(result_path+'/tmp')
 
+
 ################################################################################################
 ## kubeflow pipeline upload
 ################################################################################################
@@ -752,7 +757,7 @@ def pipelines():
 
     Preprocessing_apply = Preprocessing(args.projectId, args.versionId, args.dataPath, args.dataNormalization, args.dataAugmentation, args.trainRatio, args.validationRatio, args.testRatio) \
         .set_display_name('Data Preprocessing') \
-        .apply(onprem.mount_pvc('dlabflow-claim-test', volume_name='data', volume_mount_path='/mnt/dlabflow'))
+        .apply(onprem.mount_pvc('dlabflow-claim', volume_name='data', volume_mount_path='/mnt/dlabflow'))
     Preprocessing_apply.execution_options.caching_strategy.max_cache_staleness = 'P0D'
 
 if __name__ == '__main__':
@@ -762,9 +767,9 @@ if __name__ == '__main__':
     #USERNAME = 'user@example.com'
     #PASSWORD = '12341234'
     #NAMESPACE = 'kubeflow-user-example-com'
-    USERNAME = 'kubeflow-grit-test@service.com'
-    PASSWORD = 'N2aUQEQbhF09WFc'
-    NAMESPACE = 'kubeflow-grit-test'    
+    USERNAME = 'kubeflow-grit-admin@service.com'
+    PASSWORD = 'AW8QHDbX1UgyKSC'
+    NAMESPACE = 'kubeflow-grit-admin'    
     session = requests.Session()
     response = session.get(HOST)
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}

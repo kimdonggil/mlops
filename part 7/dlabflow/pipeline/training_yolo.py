@@ -18,7 +18,8 @@ from kubernetes.client import V1EnvVar
 ## kubeflow pipeline
 ################################################################################################
 
-@partial(create_component_from_func, base_image='dgkim1983/dlabflow:yolo-24061401', packages_to_install=['minio', 'bentoml', 'pymysql'])
+#@partial(create_component_from_func, base_image='dgkim1983/dlabflow:yolo-24061401', packages_to_install=['minio', 'bentoml', 'pymysql'])
+@partial(create_component_from_func, base_image='dgkim1983/dlabflow:model-20250304', packages_to_install=['minio', 'bentoml', 'pymysql'])
 def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch:int):
     from ultralytics import YOLO
     from sklearn.model_selection import train_test_split
@@ -45,6 +46,7 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
     from datetime import datetime
     import logging
     import torch
+    import subprocess
 
     ################################################################################################
     ## data path
@@ -199,24 +201,26 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
         if cuda == True:
             logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s')
 
-            #db = pymysql.connect(
-            #    host = '10.40.217.236',
-            #    user = 'root',
-            #    password = 'password',
-            #    port = 3306,
-            #    db = 'yolo',
-            #    charset = 'utf8',
-            #)
+            db = pymysql.connect(
+                host = '10.40.217.236',
+                user = 'root',
+                password = 'password',
+                port = 3306,
+                db = 'yolo',
+                charset = 'utf8',
+            )
 
-            db = pymysql.connect(host='10.40.217.236', user='root', password='password', port=3307, db='sms', charset='utf8')
+            #db = pymysql.connect(host='10.40.217.236', user='root', password='password', port=3307, db='sms', charset='utf8')
 
             def db_mysql_training_update(projectId, versionId, trainProgress, epoch):
                 cursor = db.cursor()
-                sql = 'Update Training set trainProgress=%s, epoch=%s where (projectId, versionId)=%s'
-                val = [trainProgress, epoch, (projectId, versionId)]
-                cursor.execute(sql, val)
-                db.commit()
-                cursor.close()            
+                try:
+                    sql = 'Update Training set trainProgress=%s, epoch=%s where (projectId, versionId)=%s'
+                    val = [trainProgress, epoch, (projectId, versionId)]
+                    cursor.execute(sql, val)
+                    db.commit()
+                finally:        
+                    cursor.close()        
 
             class CustomCallback:
                 def __init__(self, epoch):
@@ -291,15 +295,15 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
                 model = YOLO('yolov8l.pt')
             elif algorithm == 'yolo_version_8_xlarge':
                 model = YOLO('yolov8x.pt')
-            elif algorithm == 'yolo_version_9_tiny':
+            elif algorithm == 'yolo_version_9_normal':
                 model = YOLO('yolov9t.pt')
             elif algorithm == 'yolo_version_9_small':
                 model = YOLO('yolov9s.pt')
             elif algorithm == 'yolo_version_9_medium':
                 model = YOLO('yolov9m.pt')
-            elif algorithm == 'yolo_version_9_compact':
+            elif algorithm == 'yolo_version_9_large':
                 model = YOLO('yolov9c.pt')
-            elif algorithm == 'yolo_version_9_extend':
+            elif algorithm == 'yolo_version_9_xlarge':
                 model = YOLO('yolov9e.pt')
             elif algorithm == 'yolo_version_10_normal':
                 model = YOLO('yolov10n.pt')
@@ -327,13 +331,14 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
             custom_callback = CustomCallback(epoch=epoch)
 
             model.add_callback('on_train_epoch_end', custom_callback)
+
             model.train(
                 data = result_path+'/custom.yaml',
                 batch = batchsize,
                 epochs = epoch,
                 project = result_path+'/model',
                 exist_ok = True,
-                device = 1
+                device = 1 
             )
             score = model.val(data = result_path+'/custom.yaml')
 
@@ -357,6 +362,56 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
             best_pt = [file for file in os.listdir(result_path+'/model/train/weights') if file.endswith('best.pt')]
             for i in best_pt:
                 client.fput_object(bucket_name=bucket, object_name=projectId+'/'+versionId+'/train/model/train/weight/'+i, file_path=result_path+'/model/train/weights/'+i)
+
+            ### 모델 다운로드
+
+            def install_p7zip():
+                try:
+                    subprocess.run(['apt-get', 'install', '-y', 'p7zip-full'], check=True)
+                    print("p7zip-full이 성공적으로 설치되었습니다.")
+                except subprocess.CalledProcessError as e:
+                    print(f"설치 중 오류가 발생했습니다: {e}")
+
+            install_p7zip()
+
+            #def create_split_zip(input_path, output_path, zip_name="model_weight", split_size="1024M"):
+            #    files = [os.path.join(input_path, f) for f in os.listdir(input_path) if os.path.isfile(os.path.join(input_path, f))]
+            #    zip_file_base = os.path.join(output_path, zip_name)
+            #    command = ["7z", "a", f"{zip_file_base}.7z", *files, f"-v{split_size}"]
+            #    subprocess.run(command, check=True)
+            #    print(f"분할 압축이 완료되었습니다: {zip_file_base}.7z")
+
+            def create_zip(input_path, output_path, zip_name="model_weight", max_size=10, split_size="2M"):
+                files = []
+                for root, dirs, file_names in os.walk(input_path):
+                    for file_name in file_names:
+                        file_path = os.path.join(root, file_name)
+                        files.append(file_path)
+                zip_file_base = os.path.join(output_path, zip_name)
+                total_size = sum(os.path.getsize(f) for f in files)
+                total_size_MB = total_size / (1024 * 1024)
+                if total_size_MB <= max_size:
+                    command = ["7z", "a", f"{zip_file_base}.7z", *files]
+                    subprocess.run(command, check=True)
+                    print(f"압축이 완료되었습니다: {zip_file_base}.7z")
+                else:
+                    command = ["7z", "a", f"{zip_file_base}.7z", *files, f"-v{split_size}"]
+                    subprocess.run(command, check=True)
+                    print(f"분할 압축이 완료되었습니다: {zip_file_base}.7z")
+
+            input_path = result_path+'/model/train/weights'
+            output_path = result_path+'/model/train/weights_zip'
+            if not os.path.exists(output_path):
+                os.makedirs(output_path)
+
+            create_zip(input_path, output_path, zip_name="model_weight", max_size=1024, split_size="1024M")
+
+            zip_files = [file for file in os.listdir(output_path) if file.startswith('model_weight')]
+            for i in zip_files:
+                client.fput_object(bucket_name=bucket, object_name=projectId+'/'+versionId+'/train/model_weight/'+i, file_path=output_path+'/'+i)
+
+            ########################################################################
+
             df = pd.read_csv(result_path+'/model/train/results.csv', header=0)
             df.columns = df.columns.str.strip()
             fig, ax = plt.subplots(figsize=(16, 8), facecolor='white')
@@ -401,97 +456,112 @@ def Training(projectId: str, versionId: str, algorithm:str, batchsize:int, epoch
 
     def db_mysql_stat_update(projectId, versionId, statusOfTrain):
         cursor = db.cursor()
-        sql = 'Update Stat set statusOfTrain=%s where (projectId, versionId)=%s'
-        val = [statusOfTrain, (projectId, versionId)]
-        cursor.execute(sql, val)
-        db.commit()
-        cursor.close()
+        try:
+            sql = 'Update Stat set statusOfTrain=%s where (projectId, versionId)=%s'
+            val = [statusOfTrain, (projectId, versionId)]
+            cursor.execute(sql, val)
+            db.commit()
+        finally:        
+            cursor.close()        
 
     def db_mysql_training_update(projectId, versionId, algorithm, batchsize, mAP, recall, precisions, subStatusOfTraining):
         cursor = db.cursor()
-        sql = 'Update Training set algorithm=%s, batchsize=%s, mAP=%s, recall=%s, precisions=%s, subStatusOfTraining=%s where (projectId, versionId)=%s'
-        val = [algorithm, batchsize, mAP, recall, precisions, subStatusOfTraining, (projectId, versionId)]
-        cursor.execute(sql, val)
-        db.commit()
-        cursor.close()
+        try:
+            sql = 'Update Training set algorithm=%s, batchsize=%s, mAP=%s, recall=%s, precisions=%s, subStatusOfTraining=%s where (projectId, versionId)=%s'
+            val = [algorithm, batchsize, mAP, recall, precisions, subStatusOfTraining, (projectId, versionId)]
+            cursor.execute(sql, val)
+            db.commit()
+        finally:        
+            cursor.close()        
 
     def db_mysql_training_tmp_update(projectId, versionId, subStatusOfTraining):
         cursor = db.cursor()
-        sql = 'Update Training set subStatusOfTraining=%s where (projectId, versionId)=%s'
-        val = [subStatusOfTraining, (projectId, versionId)]
-        cursor.execute(sql, val)
-        db.commit()
-        cursor.close()
+        try:
+            sql = 'Update Training set subStatusOfTraining=%s where (projectId, versionId)=%s'
+            val = [subStatusOfTraining, (projectId, versionId)]
+            cursor.execute(sql, val)
+            db.commit()
+        finally:        
+            cursor.close()        
         
 
-    #db = pymysql.connect(
-    #    host = '10.40.217.236',
-    #    user = 'root',
-    #    password = 'password',
-    #    port = 3306,
-    #    db = 'yolo',
-    #    charset = 'utf8'
-    #)
-
-    db = pymysql.connect(host='10.40.217.236', user='root', password='password', port=3307, db='sms', charset='utf8')
-
-    while True:
+    def db_mysql_training_error_update(projectId, versionId, TrainingErrorCategory, TrainingErrorLog):
+        cursor = db.cursor()
         try:
-            if 'yolo' in algorithm:
-#                db_mysql_stat_update(
-#                    projectId = projectId, 
-#                    versionId = versionId, 
-#                    statusOfTrain = 'RUNNING'
-#                )
+            sql = 'Update Error set TrainingErrorCategory=%s, TrainingErrorLog=%s where (projectId, versionId)=%s'
+            val = [TrainingErrorCategory, TrainingErrorLog, (projectId, versionId)]
+            cursor.execute(sql, val)
+            db.commit()
+        finally:        
+            cursor.close()        
+        
+    db = pymysql.connect(host = '10.40.217.236', user = 'root', password = 'password', port = 3306, db = 'yolo', charset = 'utf8')
 
-                db_mysql_training_tmp_update(
-                    projectId = projectId,
-                    versionId = versionId,
-                    subStatusOfTraining = 'RUNNING'
-                )
-                yolo()
-                break
-        except:
-#            db_mysql_stat_update(
-#                projectId = projectId,
-#                versionId = versionId,
-#                statusOfTrain = 'ERROR'
-#            )
-            db_mysql_training_tmp_update(
-                projectId = projectId,
-                versionId = versionId,
-                subStatusOfTraining = 'ERROR'
-            )
-            break
-        finally:
-            for item in client.list_objects(bucket_name=bucket, prefix=projectId+'/'+versionId+'/train', recursive=True):
-                if item.object_name == projectId+'/'+versionId+'/train/metrics_score.csv':
+    try:
+        if algorithm in ('yolo_version_5_normal', 'yolo_version_5_small', 'yolo_version_5_medium', 'yolo_version_5_large', 'yolo_version_5_xlarge', 'yolo_version_8_normal', 'yolo_version_8_small', 'yolo_version_8_medium', 'yolo_version_8_large', 'yolo_version_8_xlarge'):
+            db_mysql_stat_update(projectId = projectId, versionId = versionId, statusOfTrain = 'RUNNING')
+            db_mysql_training_tmp_update(projectId = projectId, versionId = versionId, subStatusOfTraining = 'RUNNING')
+            db_mysql_training_error_update(projectId = projectId, versionId = versionId, TrainingErrorCategory = 0, TrainingErrorLog = '정상')
+            yolo()
+
+    except Exception as e:
+        db_mysql_stat_update(projectId = projectId, versionId = versionId, statusOfTrain = 'ERROR')
+        db_mysql_training_tmp_update(projectId = projectId, versionId = versionId, subStatusOfTraining = 'ERROR')
+
+        error_message = f"Error: {e}\n"
+
+        with open(result_path+"/error.log", "w") as f:
+            f.write(error_message)
+
+        #error_log = [file for file in os.listdir(result_path) if file.endswith('error.log')]
+        #for i in error_log:
+        #    client.fput_object(bucket_name=bucket, object_name=projectId+'/'+versionId+'/train/'+i, file_path=result_path+'/'+i)
+
+        if os.path.exists(result_path+"/error.log"):
+            with open(result_path+"/error.log", "r") as f:
+                error_content = f.read()
+
+            if "CUDA out of memory" in error_content:
+                trainingerrorcategory = 1
+                #new_content = "GPU 메모리 부족으로 학습이 중단되면서 오류가 발생하였습니다."
+            elif "root" in error_content or "broken permissions" in error_content:
+                trainingerrorcategory = 2
+                #new_content = "컨테이너 연결 과정에서 root 권한이 부여되지 않아 오류가 발생하였습니다."
+            elif "BadRequest" in error_content or "PodInitializing" in error_content:
+                trainingerrorcategory = 3
+                #new_content = "컨테이너를 생성하지 못하여 오류가 발생하였습니다."
+                #new_content = "알 수 없는 오류"
+
+            #with open(result_path+"/error_message.txt", "w") as f:
+            #    f.write(new_content)
+
+        db_mysql_training_error_update(projectId = projectId, versionId = versionId, TrainingErrorCategory = trainingerrorcategory, TrainingErrorLog = error_message)
+
+        print(f"Error: {e}")
+
+        sys.exit(1)
+    
+    else:
+        try:
+            metrics_file = f"{projectId}/{versionId}/train/metrics_score.csv"
+            for item in client.list_objects(bucket_name=bucket, prefix=f"{projectId}/{versionId}/train", recursive=True):
+                if item.object_name == metrics_file:
                     metrics = client.get_object(bucket, item.object_name)
                     df_metrics = pd.read_csv(metrics, index_col=0, names=['metrics', 'value'], header=0)
+                    break
+            else:
+                print("Metrics file not found")
+                return    
 
             precision = df_metrics['value'][0]
             recall = df_metrics['value'][1]
             mAP = df_metrics['value'][2]
 
-#            db_mysql_stat_update(
-#                projectId = projectId,
-#                versionId = versionId,
-#                statusOfTrain = 'FINISH'
-#            )            
+            db_mysql_training_update(projectId = projectId, versionId = versionId, algorithm = algorithm, batchsize = batchsize, mAP = mAP, recall = recall, precisions = precision, subStatusOfTraining = 'FINISH')
+        except Exception as e:
+            print(f"Error while processing metrics: {e}")
+            sys.exit(1)
 
-            db_mysql_training_update(
-                projectId = projectId,
-                versionId = versionId,
-                algorithm = algorithm,
-                batchsize = batchsize,
-                mAP = mAP,
-                recall = recall,
-                precisions = precision,
-                subStatusOfTraining = 'FINISH'
-            )
-    
-
-            
 ################################################################################################
 ## kubeflow pipeline upload
 ################################################################################################
@@ -507,8 +577,8 @@ def pipelines():
 
     Training_apply = Training(args.projectId, args.versionId, args.algorithm, args.batchsize, args.epoch) \
         .set_display_name('Model Training') \
-        .apply(onprem.mount_pvc('dlabflow-claim-test', volume_name='data', volume_mount_path='/mnt/dlabflow')) \
-        .add_env_variable(V1EnvVar(name="CUDA_VISIBLE_DEVICES", value="1"))
+        .apply(onprem.mount_pvc('dlabflow-claim', volume_name='data', volume_mount_path='/mnt/dlabflow')) \
+        .add_env_variable(V1EnvVar(name="CUDA_VISIBLE_DEVICES", value="GPU-68f953d4-c0e6-35ce-2435-97b0f64c1bbc"))
     
     smh_vol = kfp.dsl.PipelineVolume(name = 'shm-vol', empty_dir = {'medium': 'Memory'})
     Training_apply.add_pvolumes({'/dev/shm': smh_vol})        
@@ -521,9 +591,9 @@ if __name__ == '__main__':
     #USERNAME = 'user@example.com'
     #PASSWORD = '12341234'
     #NAMESPACE = 'kubeflow-user-example-com'
-    USERNAME = 'kubeflow-grit-test@service.com'
-    PASSWORD = 'N2aUQEQbhF09WFc'
-    NAMESPACE = 'kubeflow-grit-test'    
+    USERNAME = 'kubeflow-grit-admin@service.com'
+    PASSWORD = 'AW8QHDbX1UgyKSC'
+    NAMESPACE = 'kubeflow-grit-admin'    
     session = requests.Session()
     response = session.get(HOST)
     headers = {'Content-Type': 'application/x-www-form-urlencoded'}
